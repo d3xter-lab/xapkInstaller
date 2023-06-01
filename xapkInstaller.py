@@ -47,7 +47,7 @@ class Device:
         self._drawable = None
         self._locale = None
         self._sdk = None
-        self.device = device  # Use when connecting multiple devices
+        self.device = device
 
     @property
     def abi(self) -> str:
@@ -700,37 +700,38 @@ def main(root: str, one: str) -> bool:
         suffix = os.path.splitext(os.path.split(copy[1])[1])[1]
 
         for device in devices:
-            device = Device(device)
-            device.ADB = ADB
-            if copy[1].endswith(".xapk"):
-                del_path.append(unpack(copy[1]))
-                os.chdir(del_path[-1])
-            elif suffix in installSuffix:
-                return installSelector[suffix](device, copy[1], del_path, root)[1]
-            elif os.path.isfile(copy[1]):
-                sys.exit(f"{copy[1]!r} no `{'/'.join(installSuffix)}` Installation package!")
+            if args.serial in device:
+                device = Device(device)
+                device.ADB = ADB
+                if copy[1].endswith(".xapk"):
+                    del_path.append(unpack(copy[1]))
+                    os.chdir(del_path[-1])
+                elif suffix in installSuffix:
+                    return installSelector[suffix](device, copy[1], del_path, root)[1]
+                elif os.path.isfile(copy[1]):
+                    sys.exit(f"{copy[1]!r} no `{'/'.join(installSuffix)}` Installation package!")
 
-            if os.path.isdir(del_path[-1]) and os.path.exists(os.path.join(del_path[-1], "manifest.json")):
-                os.chdir(del_path[-1])
-                install, run = install_xapk(device, del_path[-1], del_path, root)
-                if run:
-                    print_err(tostr(run.stderr))
-                    try:
-                        logger.info("use alternatives")
-                        run = install_base(device, install[5:])[1]
-                        if not run.returncode:
-                            return True
-                    except Exception:
-                        logger.exception('Failed in main->install_base.')
-                    if input("Installation failed! Will try to keep the data to uninstall and reinstall, it may take more time, continue? (y/N)").lower() == 'y':
-                        package_name: str = read_json(os.path.join(del_path[-1], "manifest.json"))["package_name"]
-                        if uninstall(device, package_name, root):
-                            for i in install:
-                                run, msg = run_msg(i)
-                                if run.returncode:
-                                    sys.exit(msg)
-                    else:
-                        sys.exit("User canceled installation!")
+                if os.path.isdir(del_path[-1]) and os.path.exists(os.path.join(del_path[-1], "manifest.json")):
+                    os.chdir(del_path[-1])
+                    install, run = install_xapk(device, del_path[-1], del_path, root)
+                    if run:
+                        print_err(tostr(run.stderr))
+                        try:
+                            logger.info("use alternatives")
+                            run = install_base(device, install[5:])[1]
+                            if not run.returncode:
+                                return True
+                        except Exception:
+                            logger.exception('Failed in main->install_base.')
+                        if input("Installation failed! Will try to keep the data to uninstall and reinstall, it may take more time, continue? (y/N)").lower() == 'y':
+                            package_name: str = read_json(os.path.join(del_path[-1], "manifest.json"))["package_name"]
+                            if uninstall(device, package_name, root):
+                                for i in install:
+                                    run, msg = run_msg(i)
+                                    if run.returncode:
+                                        sys.exit(msg)
+                        else:
+                            sys.exit("User canceled installation!")
         return True
     except SystemExit as err:
         if err.code == 1:
@@ -875,6 +876,7 @@ def unpack(file: str) -> str:
 def SetupParameters():
     parser = argparse.ArgumentParser(description='xapkInstaller - Android Universal File Installer')
     parser.add_argument('-f', '--file', nargs='+', dest='file', help='filepath or dirpath', required=True)
+    parser.add_argument('-s', '--serial', dest='serial', default='', help='set single device with given serial')
     parser.add_argument('--debug', action='store_true', dest='debug', help='debug option')
     args = parser.parse_args()
     return args
