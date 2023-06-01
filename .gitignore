@@ -143,3 +143,6 @@ dmypy.json
 *.exe
 *.apkm
 log.txt
+
+# config
+*.yaml

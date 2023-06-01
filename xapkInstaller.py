@@ -311,6 +311,7 @@ def check_by_manifest(device: Device, manifest: dict) -> None:
 
 def checkVersion(device: Device, package_name: str, fileVersionCode: int, versionCode: int = -1, abis: list = []) -> None:
     msg = device.shell(["pm", "dump", package_name])[1]
+    fileVersionCode = int(fileVersionCode)
     for i in msg.split("\n"):
         if "versionCode" in i:
             versionCode = int(i.strip().split("=")[1].split(" ")[0])
@@ -726,7 +727,7 @@ def main(root: str, one: str) -> bool:
             if os.path.isdir(del_path[-1]) and os.path.exists(os.path.join(del_path[-1], "manifest.json")):
                 os.chdir(del_path[-1])
                 install, run = install_xapk(device, del_path[-1], del_path, root)
-                if run.returncode:
+                if run:
                     print_err(tostr(run.stderr))
                     try:
                         log.info("使用备用方案")
