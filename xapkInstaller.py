@@ -5,6 +5,9 @@ import os
 import shutil
 import subprocess
 import sys
+import argparse
+import traceback
+
 from axmlparserpy.axmlprinter import AXMLPrinter
 from chardet import detect
 from defusedxml.minidom import parseString
@@ -15,21 +18,6 @@ from shlex import split as shlex_split
 from typing import List, NoReturn, Tuple, Union
 from yaml import safe_load
 from zipfile import ZipFile
-
-
-log = logging.getLogger(__name__)
-log.setLevel(logging.DEBUG)
-
-handler1 = logging.FileHandler('log.txt', encoding='utf-8')
-handler1.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s - %(funcName)s - line %(lineno)d - %(levelname)s: %(message)s')
-handler1.setFormatter(formatter)
-
-handler2 = logging.StreamHandler()
-handler2.setLevel(logging.INFO)
-
-log.addHandler(handler1)
-log.addHandler(handler2)
 
 
 _abi = ["armeabi_v7a", "arm64_v8a", "armeabi", "x86_64", "x86", "mips64", "mips"]
@@ -149,7 +137,7 @@ class Device:
         """abort installation"""
         run, msg = self.shell(["pm", "install-abandon", SESSION_ID])
         if msg:
-            log.info(msg)
+            logger.info(msg)
 
     def _commit(self, SESSION_ID: str):
         run, msg = self.shell(["pm", "install-commit", SESSION_ID])
@@ -157,14 +145,14 @@ class Device:
             self._abandon(SESSION_ID)
             sys.exit(msg)
         else:
-            log.info(msg)
+            logger.info(msg)
         return run
 
     def _create(self) -> str:
         run, msg = self.shell(["pm", "install-create"])
         if run.returncode:
             sys.exit(msg)
-        log.info(msg)  # Success: created install session [1234567890]
+        logger.info(msg)  # Success: created install session [1234567890]
         return msg.strip()[:-1].split("[")[1]
 
     def _del(self, info):
@@ -212,7 +200,7 @@ def build_apkm_config(device: Device, file_list: List[str], install: List[str]) 
             config["language"].append(i)
         elif i.endswith(".apk"):
             install.append(i)
-    log.info(config)
+    logger.info(config)
     return config, install
 
 
@@ -234,7 +222,7 @@ def build_xapk_config(device: Device, split_apks: List[dict], install: List[str]
             config["language"].append(i["file"])
         else:
             install.append(i["file"])
-    log.info(config)
+    logger.info(config)
     return config, install
 
 
@@ -244,7 +232,7 @@ def check(ADB=None) -> List[str]:
     run, msg = run_msg([ADB, 'devices'])
     _devices = msg.strip().split("\n")[1:]
     if _devices == ['* daemon started successfully']:
-        log.info('Start adb service for the first time')
+        logger.info('Start adb service for the first time')
         run, msg = run_msg([ADB, 'devices'])
         _devices = msg.strip().split("\n")[1:]
     devices = []
@@ -254,13 +242,13 @@ def check(ADB=None) -> List[str]:
 
     # adb -s <device-id/ip:port> shell xxx
     if run.returncode:
-        log.error(msg)
+        logger.error(msg)
     elif len(devices) == 0:
-        log.error("The phone is not connected to the PC!")
+        logger.error("The phone is not connected to the PC!")
     elif len(devices) == 1:
         pass
     elif len(devices) > 1:
-        log.info('More than 1 device detected, multi-device installation will be performed!')
+        logger.info('More than 1 device detected, multi-device installation will be performed!')
     return devices
 
 
@@ -281,10 +269,10 @@ def check_sth(key, conf='config.yaml'):
         except FileNotFoundError:
             run = None
         if run and (run.returncode == 0):
-            log.info(f'check_sth({key!r})')
-            log.info(msg.strip())
+            logger.info(f'check_sth({key!r})')
+            logger.info(msg.strip())
             return key
-        log.error(f'Not configured: {key}')
+        logger.error(f'Not configured: {key}')
         return None
     return path
 
@@ -295,9 +283,9 @@ def check_by_manifest(device: Device, manifest: dict) -> None:
     else:
         try:
             if device.sdk > manifest["target_sdk_version"]:
-                log.warning("Android version is too high! There may be compatibility issues!")
+                logger.warning("Android version is too high! There may be compatibility issues!")
         except KeyError:
-            log.warning("`manifest['target_sdk_version']` no found.")
+            logger.warning("`manifest['target_sdk_version']` no found.")
 
     abilist = device.abilist
 
@@ -305,7 +293,7 @@ def check_by_manifest(device: Device, manifest: dict) -> None:
         if manifest.get("native_code") and not findabi(manifest["native_code"], abilist):
             sys.exit(f"Installation failed: {manifest['native_code']}\nApplication binary interface (abi) mismatch! Supported abi list by this phone: {abilist}")
     except UnboundLocalError:
-        log.exception('Failed in check_by_manifest->findabi.')
+        logger.exception('Failed in check_by_manifest->findabi.')
 
 
 def checkVersion(device: Device, package_name: str, fileVersionCode: int, versionCode: int = -1, abis: list = []) -> None:
@@ -315,7 +303,7 @@ def checkVersion(device: Device, package_name: str, fileVersionCode: int, versio
         if "versionCode" in i:
             versionCode = int(i.strip().split("=")[1].split(" ")[0])
             if versionCode == -1:
-                input("Warning: For the first installation, you need to click on the mobile phone to allow the installation!\nPress Enter to continue...")
+                input("WARNING: For the first installation, you need to click on the mobile phone to allow the installation!\nPress Enter to continue")
             elif fileVersionCode < versionCode:
                 if input("WARNING: Downgrade installation? Please make sure the file is correct! (y/N)").lower() != "y":
                     sys.exit("To downgrade the installation, the user cancels the installation.")
@@ -358,12 +346,12 @@ def config_language(config: dict, install: List[str]):
         # If there is a language pack with the same device language, it will be installed first
         install.append(config["language"][0])
     else:
-        log.warning("Could not find any of the language packs!!")
+        logger.warning("Could not find any of the language packs!!")
     return config, install
 
 
 def copy_files(copy: List[str]):
-    log.info(f"Copying `{copy[0]}` to `{copy[1]}`")
+    logger.info(f"Copying '{copy[0]}' to '{copy[1]}'")
     if os.path.exists(copy[1]):
         delPath(copy[1])
     if os.path.isfile(copy[0]):
@@ -375,7 +363,7 @@ def copy_files(copy: List[str]):
 def delPath(path: str):
     if not os.path.exists(path):
         return
-    log.info(f"Delete {path}")
+    logger.info(f"Delete {path}")
     if os.path.isfile(path):
         return os.remove(path)
     return shutil.rmtree(path)
@@ -384,9 +372,9 @@ def delPath(path: str):
 def dump(file_path: str, del_path: List[str]) -> dict:
     run, msg = run_msg(["aapt", "dump", "badging", file_path])
     if msg:
-        log.info(msg)
+        logger.info(msg)
     if run.returncode:
-        log.warning("aapt is not configured or there is an error with aapt!")
+        logger.warning("aapt is not configured or there is an error with aapt!")
         return dump_py(file_path, del_path)
     manifest = {"native_code": []}
     for line in msg.split("\n"):
@@ -402,7 +390,7 @@ def dump(file_path: str, del_path: List[str]) -> dict:
             try:
                 manifest["versionCode"] = int(line[3])
             except ValueError:
-                log.error(f"err in dump: ValueError: line[3]: {line[3]!r}")
+                logger.error(f"err in dump: ValueError: line[3]: {line[3]!r}")
                 manifest["versionCode"] = 0
     return manifest
 
@@ -425,7 +413,7 @@ def dump_py(file_path: str, del_path: List[str]) -> dict:
     try:
         manifest["target_sdk_version"] = int(uses_sdk.getAttribute("android:targetSdkVersion"))
     except ValueError:
-        log.warning("`targetSdkVersion` no found.")
+        logger.warning("`targetSdkVersion` no found.")
     file_list = zip_file.namelist()
     native_code = []
     for i in file_list:
@@ -452,7 +440,7 @@ def get_unpack_path(file_path: str) -> str:
 
 def install_aab(device: Device, file: str, del_path: List[str], root: str) -> Tuple[List[str], bool]:
     """The official version needs to be signed, and it can be installed after configuration"""
-    log.info(install_aab.__doc__)
+    logger.info(install_aab.__doc__)
     name_suffix = os.path.split(file)[1]
     name = name_suffix.rsplit(".", 1)[0]
     del_path.append(name+".apks")
@@ -475,7 +463,7 @@ def install_apk(device: Device, file: str, del_path: List[str], root: str, abc: 
     """Install the apk file"""
     name_suffix: str = os.path.split(file)[1]
     manifest = dump(name_suffix, del_path)
-    log.info(manifest)
+    logger.info(manifest)
     checkVersion(device, manifest["package_name"], int(manifest["versionCode"]), manifest["native_code"])
     check_by_manifest(device, manifest)
 
@@ -484,17 +472,17 @@ def install_apk(device: Device, file: str, del_path: List[str], root: str, abc: 
     if run.returncode:
         if abc == "-rtd":
             if "argument expected" in msg:
-                log.error('No argument expected after "-rtd"')
+                logger.error('No argument expected after "-rtd"')
             else:  # WSA
-                log.error(f'{msg!r}')
-            log.info("Modifying installation parameters to reinstall, please wait...")
+                logger.error(f'{msg!r}')
+            logger.info("Modifying installation parameters to reinstall, please wait")
             return install_apk(device, file, del_path, root, "-r")
         elif abc == "-r":
             if uninstall(device, manifest["package_name"], root):
                 return install_apk(device, file, del_path, root, "")
         elif "INSTALL_FAILED_TEST_ONLY" in msg:
-            log.error('INSTALL_FAILED_TEST_ONLY')
-            log.info("Modifying installation parameters to reinstall, please wait...")
+            logger.error('INSTALL_FAILED_TEST_ONLY')
+            logger.info("Modifying installation parameters to reinstall, please wait")
             return install_apk(device, file, del_path, root, "-t")
         else:
             sys.exit(1)
@@ -539,7 +527,7 @@ def install_apks(device: Device, file: str, del_path: List[str], root: str) -> T
             return install, status
     except FileNotFoundError:
         pass
-    log.warning('If java environment is not configured or there is an error, it will try to parse the file directly')
+    logger.warning('If java environment is not configured or there is an error, it will try to parse the file directly')
     return install_apks_py(device, file, del_path)
 
 
@@ -560,7 +548,7 @@ def install_apks_py(device: Device, file: str, del_path: List[str]) -> Tuple[Lis
     file_list = zip_file.namelist()
     del_path.append(os.path.join(os.getcwd(), get_unpack_path(file)))
     if device.sdk < 21:
-        log.warning('The current Android version does not support multi-apk mode installation, I hope there is a suitable standalone file in the apks')
+        logger.warning('The current Android version does not support multi-apk mode installation, I hope there is a suitable standalone file in the apks')
         for i in file_list:
             f = None
             if f'standalone-{device.abi}_{device.dpi}.apk' in i:
@@ -572,7 +560,7 @@ def install_apks_py(device: Device, file: str, del_path: List[str]) -> Tuple[Lis
                             f = zip_file.extract(i, del_path[-1])
             if f:
                 return install_apk(device, f, del_path, os.getcwd())
-            log.error('看来没有...')
+            logger.error('看来没有')
             sys.exit('No suitable standalone file')
     install = ["install-multiple", ""]
     for i in file_list:
@@ -606,14 +594,14 @@ def install_apks_sai(device: Device, file: str, del_path: List[str], version: in
             install = ["install", "", file_list[0]]
             run, msg = device.adb(install)
             if run.returncode:
-                log.error(msg)
+                logger.error(msg)
                 return install, False
             return install, True
     elif version == 1:
-        log.error('Undone')
+        logger.error('Undone')
         return install, False
     else:
-        log.error('Unknown situation')
+        logger.error('Unknown situation')
         return install, False
 
 
@@ -634,28 +622,28 @@ def install_multiple(device: Device, install: List[str]) -> Tuple[List[str], boo
     if run.returncode:
         if install[1] == '-rtd':
             install[1] = '-r'
-            log.info("Modifying installation parameters to reinstall, please wait...")
+            logger.info("Modifying installation parameters to reinstall, please wait")
             return install_multiple(device, install)
         elif install[1] == 'r':
             install[1] = ''
-            log.info("Modifying installation parameters to reinstall, please wait...")
+            logger.info("Modifying installation parameters to reinstall, please wait")
             return install_multiple(device, install)
         elif install[1] == '':
             print_err(tostr(run.stderr))
             try:
-                log.info("Use alternatives")
+                logger.info("Use alternatives")
                 run = install_base(device, install[2:])[1]
                 if not run.returncode:
                     return install, True
             except Exception:
-                log.exception('Failed in install_multiple->install_base.')
+                logger.exception('Failed in install_multiple->install_base.')
     return install, False
 
 
 def install_xapk(device: Device, file: str, del_path: List[str], root: str) -> Tuple[List[Union[str, List[str]]], bool]:
     """install xapk file"""
     os.chdir(file)
-    log.info("start installation...")
+    logger.info("Start installation")
     if not os.path.isfile("manifest.json"):
         sys.exit(f"Installation failed: No `manifest.json` in {file!r} Not the decompression path of `xapk` installation package!")
     manifest = read_json("manifest.json")
@@ -665,7 +653,7 @@ def install_xapk(device: Device, file: str, del_path: List[str], root: str) -> T
         if device.sdk < int(manifest["min_sdk_version"]):
             sys.exit(info_msg['sdktoolow'])
         elif device.sdk > int(manifest["target_sdk_version"]):
-            log.info("Android version is too high! There may be compatibility issues!")
+            logger.info("Android version is too high! There may be compatibility issues!")
 
         install = ["install-multiple", "-rtd"]
         config, install = build_xapk_config(device, split_apks, install)
@@ -728,12 +716,12 @@ def main(root: str, one: str) -> bool:
                 if run:
                     print_err(tostr(run.stderr))
                     try:
-                        log.info("use alternatives")
+                        logger.info("use alternatives")
                         run = install_base(device, install[5:])[1]
                         if not run.returncode:
                             return True
                     except Exception:
-                        log.exception('Failed in main->install_base.')
+                        logger.exception('Failed in main->install_base.')
                     if input("Installation failed! Will try to keep the data to uninstall and reinstall, it may take more time, continue? (y/N)").lower() == 'y':
                         package_name: str = read_json(os.path.join(del_path[-1], "manifest.json"))["package_name"]
                         if uninstall(device, package_name, root):
@@ -746,12 +734,12 @@ def main(root: str, one: str) -> bool:
         return True
     except SystemExit as err:
         if err.code == 1:
-            log.error("Error Installation failed: unknown error! Please provide files for adaptation!")
+            logger.error("Error Installation failed: unknown error! Please provide files for adaptation!")
         elif err.code != 0:
-            log.error(err)
+            logger.error(err)
         return False
     except Exception:
-        log.exception('Failed in main.')
+        logger.exception('Failed in main.')
         return False
     finally:
         os.chdir(root)
@@ -767,23 +755,23 @@ def md5(_str: str, encoding='utf-8') -> str:
 
 
 def pause() -> NoReturn:
-    input("Press enter to continue...")
+    input("Press enter to continue")
     sys.exit(0)
 
 
 def print_err(err: str):
     if "INSTALL_FAILED_VERSION_DOWNGRADE" in err:
-        log.warning("Downgrade installation? Please make sure the file is correct!")
+        logger.warning("Downgrade installation? Please make sure the file is correct!")
     elif "INSTALL_FAILED_USER_RESTRICTED: Install canceled by user" in err:
         sys.exit("The user canceled the installation or did not confirm the installation!\nThe initial installation needs manual confirmation!!")
     elif "INSTALL_FAILED_ALREADY_EXISTS" in err:
         sys.exit("An application with the same package name and version number has been installed!!")
     else:
-        log.error(err)
+        logger.error(err)
 
 
 def pull_apk(device: Device, package: str, root: str) -> str:
-    log.info("Backing up installation package...")
+    logger.info("Backing up installation package")
     run, msg = device.shell(["pm", "path", package])
     if run.returncode:
         sys.exit(msg)
@@ -798,7 +786,7 @@ def pull_apk(device: Device, package: str, root: str) -> str:
                 if run.returncode:
                     sys.exit(msg)
         except TypeError:
-            log.exception('Failed in pull_apk.')
+            logger.exception('Failed in pull_apk.')
             sys.exit(1)
         cmd = ["pull", "/storage/emulated/0/Android/obb/"+package, dir_path]
         run, msg = device.adb(cmd)
@@ -821,7 +809,7 @@ def read_json(file) -> dict:
 
 
 def restore(device: Device, dir_path: str, root: str):
-    log.info("start recovery...")
+    logger.info("Start recovery")
     os.chdir(dir_path)
     all_file = os.listdir(dir_path)
     obb = False
@@ -850,7 +838,7 @@ def restore(device: Device, dir_path: str, root: str):
 
 
 def run_msg(cmd: Union[str, List[str]]):
-    log.debug(cmd)
+    logger.debug(cmd)
     if type(cmd) is str:
         cmd = shlex_split(cmd)
     run = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -866,13 +854,13 @@ def uninstall(device: Device, package_name: str, root: str):
     if not dir_path:
         sys.exit("An error occurred while backing up the file")
     # adb uninstall package_name
-    log.info("start uninstall...")
+    logger.info("Start uninstall")
     run = device.shell(["pm", "uninstall", "-k", package_name])[0]
     try:
         if run.returncode:
             restore(device, dir_path, root)
     except Exception:
-        log.exception('Failed in uninstall->restore.')
+        logger.exception('Failed in uninstall->restore.')
         sys.exit(f"An unknown error occurred while restoring! Please try to manually operate and report the problem!\nOld version installation package path: {dir_path}")
     return run
 
@@ -880,49 +868,46 @@ def uninstall(device: Device, package_name: str, root: str):
 def unpack(file: str) -> str:
     """unzip files"""
     unpack_path = get_unpack_path(file)
-    log.info("The larger the file, the slower the decompression, please be patient...")
+    logger.info("xapk found, the decompression can be slow, please be patient")
     shutil.unpack_archive(file, unpack_path, "zip")
     return unpack_path
 
+def SetupParameters():
+    parser = argparse.ArgumentParser(description='xapkInstaller - Android Universal File Installer')
+    parser.add_argument('-f', '--file', nargs='+', dest='file', help='filepath or dirpath', required=True)
+    parser.add_argument('--debug', action='store_true', dest='debug', help='debug option')
+    args = parser.parse_args()
+    return args
 
 if __name__ == "__main__":
-    argv = sys.argv
-    if len(argv) < 2 or (len(argv) == 2 and '-l' in argv):
-        print("Usage:")
-        print("xapkInstaller <filepath or dirpath>")
-        print("For example:")
-        print("    xapkInstaller abc.aab")
-        print("    xapkInstaller abc.apk")
-        print("    xapkInstaller ./abc/")
-        print("    xapkInstaller abc.apkm abc.apks abc.xapk ./abc/")
-        pause()
-
-    if '-l' in argv:
-        argv.remove('-l')
-    else:
-        logging.disable(logging.DEBUG)
-        logging.disable(logging.INFO)
-        logging.disable(logging.WARNING)
-        '''
-        logging.disable(logging.ERROR)
-        logging.disable(logging.CRITICAL)
-        '''
-
-    rootdir = os.path.split(argv[0])[0]
-    if not rootdir:
-        rootdir = os.getcwd()
-    _len_ = len(argv[1:])
-    success = 0
     try:
-        for _i, _one in enumerate(argv[1:]):
-            log.info(f"Installing {_i+1}/{_len_}个...")
-            log.info(str(_one)+' start')
+        # arguments
+        args = SetupParameters()
+
+        # log setting
+        logger = logging.getLogger(__name__)
+        logger.setLevel(logging.DEBUG)
+        handler = logging.NullHandler()
+        if args.debug:
+            handler = logging.StreamHandler()
+        handler.setLevel(logging.DEBUG)
+        formatter = logging.Formatter('%(asctime)s:%(levelname)s: %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+
+        # main code
+        rootdir = os.path.split(sys.argv[0])[0]
+        if not rootdir:
+            rootdir = os.getcwd()
+        _len_ = len(args.file)
+        success = 0
+
+        for _i, _one in enumerate(args.file):
+            logger.info(f"Installing {_i+1}/{_len_} - {str(_one)}")
             if main(rootdir, _one):
                 success += 1
-                log.info(str(_one)+' end')
-    except Exception:
-        log.exception('Failed in unknow err.')
-        log.info('error end')
-    finally:
-        log.info(f"{success}/{_len_} successfully installed!")
-        pause()
+                
+    except (KeyboardInterrupt, SystemExit):
+        sys.exit(0)
+    except:
+        logger.error(traceback.print_exc())
