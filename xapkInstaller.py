@@ -634,10 +634,10 @@ def install_multiple(device: Device, install: List[str]) -> Tuple[List[str], boo
                 logger.info("Use alternatives")
                 run = install_base(device, install[2:])[1]
                 if not run.returncode:
-                    return install, True
+                    return install, run
             except Exception:
                 logger.exception('Failed in install_multiple->install_base.')
-    return install, False
+    return install, run
 
 
 def install_xapk(device: Device, file: str, del_path: List[str], root: str) -> Tuple[List[Union[str, List[str]]], bool]:
@@ -714,7 +714,7 @@ def main(root: str, one: str) -> bool:
                 if os.path.isdir(del_path[-1]) and os.path.exists(os.path.join(del_path[-1], "manifest.json")):
                     os.chdir(del_path[-1])
                     install, run = install_xapk(device, del_path[-1], del_path, root)
-                    if run:
+                    if run.returncode:
                         print_err(tostr(run.stderr))
                         try:
                             logger.info("use alternatives")
@@ -839,7 +839,6 @@ def restore(device: Device, dir_path: str, root: str):
 
 
 def run_msg(cmd: Union[str, List[str]]):
-    logger.debug(cmd)
     if type(cmd) is str:
         cmd = shlex_split(cmd)
     run = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
