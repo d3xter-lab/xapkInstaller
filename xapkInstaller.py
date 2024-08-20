@@ -8,7 +8,7 @@ import sys
 import argparse
 import traceback
 
-from axmlparserpy.axmlprinter import AXMLPrinter
+from androguard.core.axml import AXMLPrinter
 from chardet import detect
 from defusedxml.minidom import parseString
 from hashlib import md5 as _md5
