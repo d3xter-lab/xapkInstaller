@@ -904,6 +904,7 @@ if __name__ == "__main__":
         success = 0
 
         for _i, _one in enumerate(args.file):
+            _one = os.path.abspath(os.path.join(os.getcwd(), _one))
             logger.info(f"Installing {_i+1}/{_len_} - {str(_one)}")
             if main(rootdir, _one):
                 success += 1
