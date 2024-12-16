@@ -650,10 +650,11 @@ def install_xapk(device: Device, file: str, del_path: List[str], root: str) -> T
     if not manifest.get("expansions"):
         split_apks = manifest["split_apks"]
 
-        if device.sdk < int(manifest["min_sdk_version"]):
-            sys.exit(info_msg['sdktoolow'])
-        elif device.sdk > int(manifest["target_sdk_version"]):
-            logger.info("Android version is too high! There may be compatibility issues!")
+        if not args.ignore:
+            if device.sdk < int(manifest["min_sdk_version"]):
+                sys.exit(info_msg['sdktoolow'])
+            elif device.sdk > int(manifest["target_sdk_version"]):
+                logger.info("Android version is too high! There may be compatibility issues!")
 
         install = ["install-multiple", "-rtd"]
         config, install = build_xapk_config(device, split_apks, install)
@@ -876,6 +877,7 @@ def SetupParameters():
     parser = argparse.ArgumentParser(description='xapkInstaller - Android Universal File Installer')
     parser.add_argument('-f', '--file', nargs='+', dest='file', help='filepath or dirpath', required=True)
     parser.add_argument('-s', '--serial', dest='serial', default='', help='set single device with given serial')
+    parser.add_argument('-i', '--ignore', dest='ignore', action='store_true', default=False, help='ignore small errors')
     parser.add_argument('--debug', action='store_true', dest='debug', help='debug option')
     args = parser.parse_args()
     return args
