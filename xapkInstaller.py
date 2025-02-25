@@ -18,7 +18,9 @@ from shlex import split as shlex_split
 from typing import List, NoReturn, Tuple, Union
 from yaml import safe_load
 from zipfile import ZipFile
+from loguru import logger
 
+logger.disable('androguard')
 
 _abi = ["armeabi_v7a", "arm64_v8a", "armeabi", "x86_64", "x86", "mips64", "mips"]
 _language = ["ar", "bn", "de", "en", "et", "es", "fr", "hi", "in", "it",
@@ -403,7 +405,7 @@ def dump_py(file_path: str, del_path: List[str]) -> dict:
     with open(os.path.join(del_path[-1], upfile), "rb") as f:
         data = f.read()
     ap = AXMLPrinter(data)
-    buff = parseString(ap.getBuff())
+    buff = parseString(ap.get_buff())
     manifest = {}
     _manifest = buff.getElementsByTagName("manifest")[0]
     uses_sdk = buff.getElementsByTagName("uses-sdk")[0]
